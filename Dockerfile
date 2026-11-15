@@ -48,6 +48,9 @@ RUN set -eux; \
     tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1; \
     rm -f /tmp/node.tar.xz
 
+# 3.5) pnpm 包管理器（通过 npm 全局安装）
+RUN npm install -g pnpm
+
 # 4) Git 用户身份配置（固化进镜像）
 RUN git config --global user.email "nonpvirvatemail@163.com" \
     && git config --global user.name "Liu Cong"
