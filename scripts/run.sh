@@ -45,3 +45,11 @@ fi
 
 echo "容器已启动: $CONTAINER_NAME"
 echo "进入容器: scripts/enter.sh 或 $RUNTIME exec -it $CONTAINER_NAME bash"
+
+# 若宿主机挂载目录下没有 .git-credentials，提示用户配置
+if [[ ! -f "${HOST_GIT_DIR}/.git-credentials" ]]; then
+  echo ""
+  echo "提示: 未检测到 ${HOST_GIT_DIR}/.git-credentials"
+  echo "      如需在容器内访问 GitHub 私有仓库，请创建该文件（内容: https://<用户名>:<PAT>@github.com），"
+  echo "      然后在容器内执行: git config --global credential.helper store && cp /home/git/.git-credentials /root/.git-credentials && chmod 600 /root/.git-credentials"
+fi
