@@ -18,6 +18,8 @@ ARG NODE_DL_BASE
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Shanghai \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
     PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin \
     GOPROXY=https://goproxy.cn,direct
 
