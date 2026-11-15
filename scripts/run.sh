@@ -50,6 +50,7 @@ fi
 
 "$RUNTIME" run -d --name "$CONTAINER_NAME" \
   --restart=unless-stopped \
+  --cap-add AUDIT_WRITE \
   -p "${SSH_PORT}:22" \
   -v "${HOST_GIT_DIR}:/home/git:Z" \
   "$IMAGE_NAME"
