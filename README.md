@@ -48,6 +48,7 @@ podman run -d --name lc-dev-env --restart=unless-stopped \
 ```
 
 > 挂载说明：宿主机 `/home/lc/git` 挂载到容器 `/home/git`。
+> 若宿主机 `/home/lc/git` 不存在，`run.sh` 会自动创建。
 > `:Z` 用于 SELinux 环境下重打标签，非 SELinux 环境可省略。
 
 ### 3. 进入容器

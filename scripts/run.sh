@@ -6,6 +6,9 @@ IMAGE_NAME="${IMAGE_NAME:-lc-ubuntu-dev:latest}"
 CONTAINER_NAME="${CONTAINER_NAME:-lc-dev-env}"
 HOST_GIT_DIR="${HOST_GIT_DIR:-/home/lc/git}"
 
+# 若宿主机挂载目录不存在，先创建
+mkdir -p "$HOST_GIT_DIR"
+
 # 清理同名旧容器（若存在）
 podman stop -t 2 "$CONTAINER_NAME" 2>/dev/null || true
 podman rm "$CONTAINER_NAME" 2>/dev/null || true
