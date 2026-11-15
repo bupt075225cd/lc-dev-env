@@ -45,15 +45,3 @@ fi
 
 echo "容器已启动: $CONTAINER_NAME"
 echo "进入容器: scripts/enter.sh 或 $RUNTIME exec -it $CONTAINER_NAME bash"
-
-# 若宿主机挂载目录下没有 SSH 密钥，提示用户配置
-if [[ ! -f "${HOST_GIT_DIR}/.ssh/id_ed25519" ]]; then
-  echo ""
-  echo "提示: 未检测到 ${HOST_GIT_DIR}/.ssh/id_ed25519"
-  echo "      如需在容器内通过 SSH 访问 GitHub 仓库，请先在宿主机执行："
-  echo "        mkdir -p ${HOST_GIT_DIR}/.ssh && ssh-keygen -t ed25519 -C dev-env -f ${HOST_GIT_DIR}/.ssh/id_ed25519"
-  echo "      然后将公钥 ${HOST_GIT_DIR}/.ssh/id_ed25519.pub 添加到 GitHub（Settings → SSH keys 或仓库 Deploy keys）"
-  echo "      在容器内执行以下命令即可用 SSH 克隆："
-  echo "        git config --global core.sshCommand \"ssh -i /home/git/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new\""
-  echo "      示例: git clone git@github.com:bupt075225cd/peak.git"
-fi
