@@ -50,6 +50,16 @@ RUN set -eux; \
 RUN git config --global user.email "nonpvirvatemail@163.com" \
     && git config --global user.name "Liu Cong"
 
-# 5) root 运行，工作目录为挂载点，后台常驻
+# 5) 安装 SSH 服务，允许 root 密码登录（密码 123456）
+#    root 密码登录默认被限制，通过 sshd_config.d 覆盖为允许密码登录
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-server \
+    && echo 'root:123456' | chpasswd \
+    && mkdir -p /run/sshd /etc/ssh/sshd_config.d \
+    && printf 'PermitRootLogin yes\nPasswordAuthentication yes\n' > /etc/ssh/sshd_config.d/00-dev-env.conf \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+EXPOSE 22
+
+# 6) root 运行，工作目录为挂载点，启动 SSH 并后台常驻
 WORKDIR /home/git
-CMD ["sleep", "infinity"]
+CMD ["sh", "-c", "ssh-keygen -A && service ssh start && sleep infinity"]
