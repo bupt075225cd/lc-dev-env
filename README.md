@@ -70,8 +70,8 @@ podman exec -it lc-dev-env bash
 - 推送到 GitHub 后，`.github/workflows/ci.yml` 会在 push 到 `main` 或打 `v*` tag 时自动构建镜像并发布到阿里云 ACR。
 - 发布地址：`crpi-vb458bo8ja2welze.cn-chengdu.personal.cr.aliyuncs.com`
 - 需要配置的 GitHub Secrets：
-  - `ACR_USERNAME`：阿里云 ACR 登录用户名
-  - `ACR_PASSWORD`：阿里云 ACR 登录密码
+  - `ALIYUN_ACR_USERNAME`：阿里云 ACR 登录用户名
+  - `ALIYUN_ACR_PASSWORD`：阿里云 ACR 登录密码
 
 ## 构建源说明
 
