@@ -7,8 +7,8 @@ on:
 
 env:
   REGISTRY: crpi-vb458bo8ja2welze.cn-chengdu.personal.cr.aliyuncs.com
-  # 镜像路径 <命名空间>/<仓库名>，请根据实际 ACR 命名空间调整
-  IMAGE_NAME: lc-dev-env/lc-dev-env
+  # 镜像路径 <命名空间>/<仓库名>
+  IMAGE_NAME: peak2026/lc-dev-env
 
 jobs:
   build-and-push:
