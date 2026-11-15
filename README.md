@@ -2,6 +2,8 @@
 
 基于 Ubuntu 的通用开发环境容器镜像，预装 Go / Python / Node.js / g++ 等工具链。
 
+> 镜像由 GitHub Actions CI 构建并发布到阿里云 ACR，本机 `run.sh` 统一从 ACR 拉取启动，保证本地与 CI 构建产物一致。
+
 ## 镜像包含的工具链
 
 | 工具 | 版本 | 安装方式 |
@@ -24,8 +26,8 @@ lc-dev-env/
 │       └── ci.yml          # GitHub Actions：构建并发布镜像到阿里云 ACR
 ├── Dockerfile              # 构建开发环境镜像（构建源参数化）
 ├── scripts/
-│   ├── build.sh            # 构建镜像（本机用内网/阿里云源）
-│   ├── run.sh              # 后台运行容器（挂载宿主机 git 目录）
+│   ├── build.sh            # 本机构建镜像（本地测试用，内网/阿里云源）
+│   ├── run.sh              # 从 ACR 拉取镜像并后台运行容器
 │   └── enter.sh            # 进入容器
 ├── .dockerignore
 └── README.md
@@ -33,29 +35,30 @@ lc-dev-env/
 
 ## 使用方法
 
-### 1. 构建镜像
-
-本机构建（自动使用内网 / 阿里云镜像源）：
-
-```bash
-scripts/build.sh
-```
-
-公共源构建（用于 GitHub Actions CI）：
-
-```bash
-podman build -f Dockerfile -t lc-ubuntu-dev:latest .
-```
-
-### 2. 运行容器
+### 1. 运行容器（从 ACR 拉取镜像）
 
 ```bash
 scripts/run.sh
 ```
 
+`run.sh` 会从阿里云 ACR 拉取 CI 构建的镜像并启动容器。
+
+> ACR 登录：首次运行前需登录一次（或在环境变量中提供凭据）：
+> ```bash
+> podman login crpi-vb458bo8ja2welze.cn-chengdu.personal.cr.aliyuncs.com
+> # 或
+> export ALIYUN_ACR_USERNAME=xxx ALIYUN_ACR_PASSWORD=xxx
+> ```
+>
 > 挂载说明：宿主机 `/home/lc/git` 挂载到容器 `/home/git`。
 > 若宿主机 `/home/lc/git` 不存在，`run.sh` 会自动创建。
 > `:Z` 用于 SELinux 环境下重打标签，非 SELinux 环境可省略。
+
+### 2. 本机构建镜像（本地测试）
+
+```bash
+scripts/build.sh
+```
 
 ### 3. 进入容器
 
@@ -68,7 +71,7 @@ podman exec -it lc-dev-env bash
 ## CI/CD
 
 - 推送到 GitHub 后，`.github/workflows/ci.yml` 会在 push 到 `main` 或打 `v*` tag 时自动构建镜像并发布到阿里云 ACR。
-- 发布地址：`crpi-vb458bo8ja2welze.cn-chengdu.personal.cr.aliyuncs.com`
+- 发布地址：`crpi-vb458bo8ja2welze.cn-chengdu.personal.cr.aliyuncs.com/peak2026/lc-dev-env`
 - 需要配置的 GitHub Secrets：
   - `ALIYUN_ACR_USERNAME`：阿里云 ACR 登录用户名
   - `ALIYUN_ACR_PASSWORD`：阿里云 ACR 登录密码
