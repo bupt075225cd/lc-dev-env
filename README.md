@@ -88,5 +88,6 @@ Dockerfile 的构建源已参数化，默认使用公共源（供 GitHub Actions
 
 ## 说明
 
+- 脚本兼容 `podman` 与 `docker`（自动检测，优先 podman）。
 - 容器以 root 运行，后台常驻（`sleep infinity`），重启策略 `unless-stopped`。
 - 基础镜像来自内部 SWR 源（因目标机无法直连 Docker Hub），CI 环境使用公共源。
