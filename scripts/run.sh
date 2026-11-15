@@ -22,16 +22,25 @@ SSH_PORT="${SSH_PORT:-2228}"
 # 若宿主机挂载目录不存在，先创建
 mkdir -p "$HOST_GIT_DIR"
 
-# 镜像不存在则从 ACR 拉取（未提供凭据时，依赖已手动 login 的凭据）
-if ! "$RUNTIME" image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
-  echo "本地镜像不存在，从 ACR 拉取: $IMAGE_NAME"
-  if [[ -n "${ALIYUN_ACR_USERNAME:-}" && -n "${ALIYUN_ACR_PASSWORD:-}" ]]; then
-    echo "$ALIYUN_ACR_PASSWORD" | "$RUNTIME" login "$REGISTRY" -u "$ALIYUN_ACR_USERNAME" --password-stdin
-    "$RUNTIME" pull "$IMAGE_NAME"
-    # 拉取完成后退出登录，避免残留 ACR 凭据
-    "$RUNTIME" logout "$REGISTRY" >/dev/null 2>&1 || true
+# 每次运行都拉取最新镜像，确保启动的是最新版本（而非本地旧镜像）
+PULL_FAILED=0
+echo "拉取最新镜像: $IMAGE_NAME"
+if [[ -n "${ALIYUN_ACR_USERNAME:-}" && -n "${ALIYUN_ACR_PASSWORD:-}" ]]; then
+  echo "$ALIYUN_ACR_PASSWORD" | "$RUNTIME" login "$REGISTRY" -u "$ALIYUN_ACR_USERNAME" --password-stdin
+  "$RUNTIME" pull "$IMAGE_NAME" || PULL_FAILED=1
+  # 拉取完成后退出登录，避免残留 ACR 凭据
+  "$RUNTIME" logout "$REGISTRY" >/dev/null 2>&1 || true
+else
+  "$RUNTIME" pull "$IMAGE_NAME" || PULL_FAILED=1
+fi
+
+# 拉取失败时：本地有镜像则回退使用，否则报错退出
+if [[ "$PULL_FAILED" -eq 1 ]]; then
+  if "$RUNTIME" image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
+    echo "警告: 拉取最新镜像失败，回退使用本地镜像 $IMAGE_NAME" >&2
   else
-    "$RUNTIME" pull "$IMAGE_NAME"
+    echo "错误: 拉取镜像失败且本地无可用镜像: $IMAGE_NAME" >&2
+    exit 1
   fi
 fi
 
