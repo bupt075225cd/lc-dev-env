@@ -60,12 +60,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssh-server 
 
 EXPOSE 22
 
-# 6) bash 提示符：启用 git 分支显示（source ~/git-prompt.sh）
-#    git-prompt.sh 由 git 包提供，不同版本路径略有差异，做兜底查找
-RUN GP=/usr/share/git-core/contrib/completion/git-prompt.sh; \
-    [ -f "$GP" ] || GP=/usr/share/doc/git/contrib/completion/git-prompt.sh; \
-    cp "$GP" /root/git-prompt.sh && \
-    printf '%s\n' 'source ~/git-prompt.sh' \
+# 6) bash 提示符：启用 git 分支显示
+#    构建时将 files/ 下的官方 git-prompt.sh 复制到 /root，source 它提供 __git_ps1
+COPY files/git-prompt.sh /root/git-prompt.sh
+RUN printf '%s\n' 'source ~/git-prompt.sh' \
                   'export PS1='"'"'[\u@\h \W\[\033[32m\]$(__git_ps1 " (%s)")\[\033[0m\]]\$ '"'"'' \
         >> /root/.bashrc
 
