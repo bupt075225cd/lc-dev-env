@@ -27,6 +27,7 @@ usage() {
 
 环境变量:
   EXPECTED_GO_VERSION / EXPECTED_NODE_VERSION  覆盖预期版本（默认从 Dockerfile 读取）
+  SSH_PASSWORD                                 容器 root 密码（默认 123456）
 
 示例:
   scripts/smoke-test.sh
@@ -189,45 +190,68 @@ if ! wait_for_port; then
   die "等待 SSH 端口超时（127.0.0.1:${HOST_PORT}）"
 fi
 
-# SSH 登录方式：能用 ssh 客户端就走真实登录，否则退化为 exec（只跳过登录校验）
+# SSH 登录方式：用镜像文档里的 root 密码登录（验证 PermitRootLogin / PasswordAuthentication
+# 与 PAM 配置），没有 ssh 客户端时退化为 exec 执行检查。
 SSH_MODE=1
-if ! command -v ssh >/dev/null 2>&1 || ! command -v ssh-keygen >/dev/null 2>&1; then
+if ! command -v ssh >/dev/null 2>&1; then
   SSH_MODE=0
-  log_warn "未找到 ssh/ssh-keygen，改用 exec 执行检查（跳过 SSH 登录校验）"
+  log_warn "未找到 ssh 客户端，改用 exec 执行检查（跳过 SSH 登录校验）"
 fi
 
+SSH_PASSWORD="${SSH_PASSWORD:-123456}"
+ASKPASS_SCRIPT="$TMP_DIR/askpass.sh"
+
+ssh_run() {
+  local cmd="$1"
+  local ssh_args=(
+    -p "$HOST_PORT"
+    -o PreferredAuthentications=password
+    -o PubkeyAuthentication=no
+    -o NumberOfPasswordPrompts=1
+    -o StrictHostKeyChecking=no
+    -o UserKnownHostsFile=/dev/null
+    -o LogLevel=ERROR
+    -o ConnectTimeout=15
+    root@127.0.0.1 "$cmd"
+  )
+  # setsid 脱离终端，保证 ssh 走 SSH_ASKPASS（本地有 TTY 时也能非交互登录）
+  if command -v setsid >/dev/null 2>&1; then
+    SSH_ASKPASS="$ASKPASS_SCRIPT" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 \
+      setsid -w ssh "${ssh_args[@]}"
+  else
+    SSH_ASKPASS="$ASKPASS_SCRIPT" SSH_ASKPASS_REQUIRE=force DISPLAY=:0 \
+      ssh "${ssh_args[@]}"
+  fi
+}
+
 if [[ $SSH_MODE -eq 1 ]]; then
-  ssh-keygen -q -t ed25519 -N '' -C 'lc-dev-env-smoke' -f "$SSH_KEY"
-  "$RUNTIME" exec "$SMOKE_NAME" mkdir -p /root/.ssh
-  "$RUNTIME" cp "$SSH_KEY.pub" "$SMOKE_NAME:/root/.ssh/authorized_keys"
-  "$RUNTIME" exec "$SMOKE_NAME" chmod 700 /root/.ssh
-  "$RUNTIME" exec "$SMOKE_NAME" chmod 600 /root/.ssh/authorized_keys
+  cat > "$ASKPASS_SCRIPT" <<EOF
+#!/bin/sh
+printf '%s\\n' '$SSH_PASSWORD'
+EOF
+  chmod +x "$ASKPASS_SCRIPT"
 
   ssh_ready=0
+  ssh_err=""
   for _ in 1 2 3 4 5 6 7 8 9 10; do
-    if ssh -i "$SSH_KEY" -p "$HOST_PORT" \
-          -o BatchMode=yes -o IdentitiesOnly=yes -o PreferredAuthentications=publickey \
-          -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-          -o LogLevel=ERROR -o ConnectTimeout=15 \
-          root@127.0.0.1 true >/dev/null 2>&1; then
+    if ssh_err="$(ssh_run true 2>&1)"; then
       ssh_ready=1
       break
     fi
     sleep 1
   done
   if [[ $ssh_ready -ne 1 ]]; then
+    printf '%s\n' '--- ssh 客户端输出 ---' "$ssh_err" >&2
+    "$RUNTIME" exec "$SMOKE_NAME" sh -c \
+      "sshd -T 2>/dev/null | grep -iE '^(permitrootlogin|passwordauthentication|pubkeyauthentication|usepam|kbdinteractiveauthentication)'" >&2 || true
     dump_logs
-    die "SSH 登录失败（root@127.0.0.1:${HOST_PORT}）"
+    die "SSH 登录失败（root@127.0.0.1:${HOST_PORT}，密码登录）"
   fi
 fi
 
 remote() {
   if [[ $SSH_MODE -eq 1 ]]; then
-    ssh -i "$SSH_KEY" -p "$HOST_PORT" \
-      -o BatchMode=yes -o IdentitiesOnly=yes -o PreferredAuthentications=publickey \
-      -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-      -o LogLevel=ERROR -o ConnectTimeout=15 \
-      root@127.0.0.1 "$1"
+    ssh_run "$1"
   else
     "$RUNTIME" exec "$SMOKE_NAME" sh -c "$1"
   fi
