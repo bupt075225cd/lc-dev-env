@@ -59,17 +59,15 @@ RUN git config --global user.email "nonpvirvatemail@163.com" \
 #    root 密码登录默认被限制，通过 sshd_config.d 覆盖为允许密码登录。
 #    sshd 不会继承镜像的 ENV，因此用 SetEnv 把 PATH / GOPROXY / 时区 / locale
 #    注入 SSH 会话，否则 ssh 登录后 go、node、pnpm 都不在 PATH 里。
-RUN apt-get update && apt-get install -y --no-install-recommends openssh-server \
+#    注意：sshd 只生效第一条 SetEnv 指令（同名指令后面的会被忽略），
+#    所以多个变量必须写在同一条 SetEnv 里。
+RUN apt-get update && apt-get install -y --no-install-recommends openssh-server tzdata \
     && echo 'root:123456' | chpasswd \
     && mkdir -p /run/sshd /etc/ssh/sshd_config.d \
     && printf '%s\n' \
           'PermitRootLogin yes' \
           'PasswordAuthentication yes' \
-          'SetEnv PATH=/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
-          'SetEnv GOPROXY=https://goproxy.cn,direct' \
-          'SetEnv TZ=Asia/Shanghai' \
-          'SetEnv LANG=C.UTF-8' \
-          'SetEnv LC_ALL=C.UTF-8' \
+          'SetEnv PATH=/usr/local/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin GOPROXY=https://goproxy.cn,direct TZ=Asia/Shanghai LANG=C.UTF-8 LC_ALL=C.UTF-8' \
           > /etc/ssh/sshd_config.d/00-dev-env.conf \
     && printf '%s\n' \
           'export PATH="/usr/local/go/bin:$PATH"' \
