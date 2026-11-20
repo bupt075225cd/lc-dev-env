@@ -30,7 +30,7 @@ usage() {
 
 示例:
   scripts/smoke-test.sh
-  scripts/smoke-test.sh sha-<git sha>
+  scripts/smoke-test.sh previous
   scripts/smoke-test.sh repo@sha256:...
 EOF
 }

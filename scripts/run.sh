@@ -63,14 +63,6 @@ detect_runtime
 validate_config
 state_init
 
-# 未显式指定 tag 时，沿用上次使用的 tag（例如用 --tag v1.2.0 装过，--update 就升级 v1.2.0）
-if [[ $TAG_EXPLICIT -eq 0 ]]; then
-  prev_tag="$(state_current_tag)"
-  if [[ -n "$prev_tag" ]]; then
-    IMAGE_TAG="$prev_tag"
-  fi
-fi
-
 repo="$(image_repo)"
 
 # 决定本次使用哪个引用：显式引用 > 指定摘要 > 已钉住版本 > tag

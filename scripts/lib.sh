@@ -196,7 +196,6 @@ state_current_field() {
 }
 
 state_current_pinned() { state_current_field 3; }
-state_current_tag()    { state_current_field 4; }
 
 state_pin() {
   local ref="$1" pinned="$2" tag="$3"

@@ -25,7 +25,7 @@
 lc-dev-env/
 ├── .github/
 │   └── workflows/
-│       └── ci.yml          # 构建 -> 冒烟测试 -> 发布 ACR -> 按 digest 复验
+│       └── ci.yml          # 构建 -> 冒烟测试 -> 轮转 latest/previous -> 发布 -> 复验
 ├── Dockerfile              # 开发环境镜像（构建源参数化）
 ├── dev-env.conf            # 默认配置（镜像仓库/容器名/端口/挂载）
 ├── scripts/
@@ -73,18 +73,22 @@ podman exec -it lc-dev-env bash       # 容器名见 dev-env.conf 的 CONTAINER_
 ### 3. 升级到新版本
 
 ```bash
-scripts/run.sh --update        # 重新拉取当前 tag 并钉住新 digest
-scripts/run.sh --tag v1.2.0    # 切换到指定 tag 并钉住
+scripts/run.sh --update        # 重新拉取 IMAGE_TAG（默认 latest）并钉住新 digest
+scripts/run.sh --tag <tag>     # 钉住任意已存在的 tag（如 previous）
 ```
 
 ### 4. 回滚
 
 ```bash
-scripts/rollback.sh --list     # 列出可回滚版本（1 = 最新）
-scripts/rollback.sh 2          # 回滚到序号 2 的版本
-scripts/rollback.sh v1.2.0     # 回滚到某个 tag
+scripts/rollback.sh --list     # 列出本地记录的可回滚版本（1 = 最新）
+scripts/rollback.sh 2          # 回滚到本地历史序号 2 的版本
+scripts/rollback.sh previous   # 回滚到 ACR 中的上一版（CI 轮转出来的标签）
 scripts/rollback.sh sha256:1f2e3d...   # 按镜像摘要回滚
 ```
+
+ACR 中只保留 `latest` 与 `previous` 两个版本，所以跨机器回滚只有一档；
+本机 `.state` 会记录最近 50 次钉住的 digest，本地回滚可以更多（前提是镜像在本地，
+或 ACR 仍能按该 digest 拉取）。
 
 也可以直接钉住 CI 输出的摘要运行：
 
@@ -96,7 +100,7 @@ IMAGE_DIGEST=sha256:1f2e3d... scripts/run.sh
 
 ```bash
 scripts/smoke-test.sh                    # 测试当前钉住的版本
-scripts/smoke-test.sh sha-<完整 git sha>  # 测试仓库中的某个版本
+scripts/smoke-test.sh previous           # 测试 ACR 中的上一版
 scripts/smoke-test.sh --keep             # 保留测试容器，便于排查
 ```
 
@@ -138,6 +142,8 @@ CONTAINER_NAME=my-env scripts/enter.sh
 - `STATE_DIR/history.tsv`：最近 50 条版本记录，`rollback.sh --list` 按此列出。
 - 钉住的引用是 `repo@sha256:...`（本地构建且无仓库摘要时退化为镜像 ID），因此回滚目标不可变。
 - 每次运行 `run.sh` 时若 digest 与上一条不同才追加历史，避免重复记录。
+- ACR 侧只有 `latest` / `previous` 两个版本：个人版不支持版本保留策略，由 CI 在每次发布时
+  把旧 `latest` 轮转为 `previous`，从而把可见版本固定为 2 个。
 
 ## CI/CD
 
@@ -146,15 +152,20 @@ CONTAINER_NAME=my-env scripts/enter.sh
 1. **build-and-test**（push 到 `main`、打 `v*` tag、对 `main` 的 PR 均触发）
    - 构建镜像并 `load` 到本地；
    - **冒烟测试**（同 `scripts/smoke-test.sh`）通过后才允许推送；
-   - 登录 ACR 推送全部标签，并校验所有标签指向同一摘要；
-   - 输出摘要与仓库地址，写入 Job Summary。
+   - 登录 ACR 后先把当前 `latest` 轮转为 `previous`，再把本次构建推为新的 `latest`；
+   - 输出两个版本的 digest 与仓库地址，写入 Job Summary。
 2. **verify-published**（仅 push/tag 且发布成功时）
-   - 从 ACR 按 **digest** 重新拉取并再跑一遍冒烟测试，验证仓库里的产物本身可用。
+   - 按 **digest** 从 ACR 重新拉取并再跑一遍冒烟测试，验证仓库里的产物本身可用。
 
-| 触发 | 生成的标签 |
-|------|-----------|
-| push 到 `main` | `latest`、`sha-<完整 git sha>`、`main` |
-| 打 `v1.2.3` tag | `1.2.3`、`sha-<完整 git sha>` |
+| 触发 | ACR 中的变化 |
+|------|-------------|
+| push 到 `main` / 打 `v*` tag | `latest` 更新为本次构建，`previous` 指向上一版 |
+| Pull Request | 只构建 + 冒烟测试，不推送 |
+
+> ACR 个人版不支持版本保留策略（官方文档：只能到控制台手动删除），因此这里用
+> `latest` + `previous` 两个滚动标签，把 ACR 中可引用的版本固定在 2 个。
+> 更早的 manifest 会失去标签引用，是否回收由 ACR 决定；需要保留更多历史时，
+> 可升级企业版并使用保留策略，或手动在控制台保留。
 
 发布地址：`crpi-vb458bo8ja2welze.cn-chengdu.personal.cr.aliyuncs.com/peak2026/lc-dev-env`
 
@@ -183,3 +194,5 @@ Dockerfile 的构建源已参数化，默认使用公共源（供 GitHub Actions
 - 安全提示：`root` 密码固定为 `123456` 且端口映射默认监听所有网卡；请只在可信网络使用，
   或自行改为 SSH key 登录（`-p 127.0.0.1:${SSH_PORT}:22` 可限制仅本机访问）。
 - 目前只构建 `linux/amd64` 单架构镜像。
+- ACR 个人版不支持版本保留策略，因此仓库里始终只有 `latest` / `previous` 两个版本；
+  需要更长的版本历史时请改用企业版保留策略或手动维护。
