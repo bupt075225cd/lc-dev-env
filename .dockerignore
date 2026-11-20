@@ -2,3 +2,5 @@
 .gitignore
 .github
 README.md
+.state
+dev-env.conf
