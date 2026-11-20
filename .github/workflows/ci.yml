@@ -1,18 +1,140 @@
-name: Build and Publish
+name: Build, Verify and Publish
 
 on:
   push:
     branches: [main]
     tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
 
 env:
   REGISTRY: crpi-vb458bo8ja2welze.cn-chengdu.personal.cr.aliyuncs.com
   # 镜像路径 <命名空间>/<仓库名>
   IMAGE_NAME: peak2026/lc-dev-env
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-push:
+  build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
+    outputs:
+      digest: ${{ steps.publish.outputs.digest }}
+      repo: ${{ steps.publish.outputs.repo }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long,prefix=sha-
+            type=semver,pattern={{version}}
+            type=ref,event=branch
+
+      - name: Build image (load locally for verification)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Collect image tags
+        run: |
+          set -euo pipefail
+          printf '%s\n' "${{ steps.meta.outputs.tags }}" \
+            | sed '/^[[:space:]]*$/d' > "$RUNNER_TEMP/image-tags.txt"
+          echo "本次标签:"
+          sed 's/^/  /' "$RUNNER_TEMP/image-tags.txt"
+
+      # 门禁：构建产物先通过冒烟测试（工具链 + SSH 登录 + 挂载），通过后才推送
+      - name: Smoke test built image
+        run: |
+          set -euo pipefail
+          ./scripts/smoke-test.sh "$(head -n 1 "$RUNNER_TEMP/image-tags.txt")" --no-pull
+
+      - name: Login to Alibaba Cloud ACR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.ALIYUN_ACR_USERNAME }}
+          password: ${{ secrets.ALIYUN_ACR_PASSWORD }}
+
+      - name: Push all tags
+        id: publish
+        if: github.event_name != 'pull_request'
+        run: |
+          set -euo pipefail
+          repo="${REGISTRY}/${IMAGE_NAME}"
+
+          # 推送后读取仓库摘要：优先本地 RepoDigests，取不到时回退查询仓库 manifest
+          digest_of_tag() {
+            local rd
+            rd="$(docker image inspect --format '{{index .RepoDigests 0}}' "$1" 2>/dev/null || true)"
+            if [[ -n "$rd" ]]; then
+              printf '%s' "${rd#*@}"
+              return 0
+            fi
+            docker buildx imagetools inspect "$1" --format '{{.Manifest.Digest}}' 2>/dev/null || true
+          }
+
+          digest=""
+          while IFS= read -r tag; do
+            [[ -n "$tag" ]] || continue
+            echo "推送 $tag"
+            docker push "$tag"
+            current="$(digest_of_tag "$tag")"
+            if [[ "$current" != sha256:* ]]; then
+              echo "错误: 无法获取标签 $tag 的仓库摘要（得到: ${current:-<空>}）"
+              exit 1
+            fi
+            if [[ -z "$digest" ]]; then
+              digest="$current"
+            elif [[ "$current" != "$digest" ]]; then
+              echo "错误: 标签 $tag 的摘要 $current 与 $digest 不一致"
+              exit 1
+            fi
+          done < "$RUNNER_TEMP/image-tags.txt"
+
+          [[ "$digest" == sha256:* ]] || { echo "错误: 未获取到有效摘要: $digest"; exit 1; }
+
+          # 所有标签（latest / sha-<完整sha> / 语义化版本 / 分支）指向同一不可变摘要
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "repo=$repo" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### 镜像已发布"
+            echo
+            echo "- 仓库：\`${repo}\`"
+            echo "- 摘要：\`${digest}\`（下列标签均指向该摘要）"
+            echo "- 标签："
+            sed 's/^/- `/' "$RUNNER_TEMP/image-tags.txt" | sed 's/$/`/'
+            echo
+            echo "**钉住本次版本运行**：\`IMAGE_DIGEST=${digest} scripts/run.sh\`"
+            echo
+            echo "**查看/回滚历史版本**：\`scripts/rollback.sh --list\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # 发布后再从 ACR 按 digest 拉取并复验，确保仓库里的产物本身可用
+  verify-published:
+    needs: build-and-test
+    if: github.event_name != 'pull_request' && needs.build-and-test.outputs.digest != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,22 +146,8 @@ jobs:
           username: ${{ secrets.ALIYUN_ACR_USERNAME }}
           password: ${{ secrets.ALIYUN_ACR_PASSWORD }}
 
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha
-            type=semver,pattern={{version}}
-            type=ref,event=branch
-
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+      - name: Smoke test published image (by digest)
+        run: |
+          set -euo pipefail
+          ./scripts/smoke-test.sh \
+            "${{ needs.build-and-test.outputs.repo }}@${{ needs.build-and-test.outputs.digest }}"
