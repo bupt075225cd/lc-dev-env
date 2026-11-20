@@ -150,7 +150,7 @@ CONTAINER_NAME=my-env scripts/enter.sh
 `.github/workflows/ci.yml`：
 
 1. **build-and-test**（push 到 `main`、打 `v*` tag、对 `main` 的 PR 均触发）
-   - 构建镜像并 `load` 到本地；
+   - 用 `docker build` 构建到本地镜像库，并校验镜像确实存在；
    - **冒烟测试**（同 `scripts/smoke-test.sh`）通过后才允许推送；
    - 登录 ACR 后先把当前 `latest` 轮转为 `previous`，再把本次构建推为新的 `latest`；
    - 输出两个版本的 digest 与仓库地址，写入 Job Summary。

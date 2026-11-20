@@ -17,6 +17,8 @@ env:
   # ACR 个人版不支持版本保留策略，改用两个滚动标签把可见版本控制在 2 个
   IMAGE_TAG: latest
   PREVIOUS_TAG: previous
+  # 脚本默认优先 podman；CI 里统一使用 docker，避免两个引擎之间镜像不互通
+  RUNTIME: docker
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -33,24 +35,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=${{ env.IMAGE_TAG }}
-
-      - name: Build image (load locally for verification)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+      # 直接用 docker build 构建到本机镜像库（不走 buildx 的 load，避免构建成功但镜像不在本机）
+      - name: Build image
+        run: |
+          set -euo pipefail
+          image="${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+          docker build \
+            --file Dockerfile \
+            --tag "$image" \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            .
+          if ! docker image inspect "$image" >/dev/null 2>&1; then
+            echo "错误: 构建完成但本地找不到镜像 $image"
+            docker images
+            exit 1
+          fi
+          echo "本地镜像已就绪: $image"
 
       # 门禁：构建产物先通过冒烟测试（工具链 + SSH 登录 + 挂载），通过后才推送
       - name: Smoke test built image

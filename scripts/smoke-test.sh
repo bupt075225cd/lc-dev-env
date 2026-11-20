@@ -100,7 +100,7 @@ if image_exists "$REF"; then
   fi
 else
   if [[ $NO_PULL -eq 1 ]]; then
-    die "本地没有镜像 $REF（--no-pull 时不会拉取）"
+    die "本地没有镜像 $REF（运行时: $RUNTIME，--no-pull 时不会拉取）"
   fi
   log_info "拉取镜像: $REF"
   pull_image "$REF" || die "拉取镜像失败: $REF"
