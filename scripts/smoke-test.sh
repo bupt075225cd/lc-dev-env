@@ -118,8 +118,14 @@ cleanup() {
   if [[ $KEEP -eq 1 ]]; then
     log_warn "已保留测试容器 $SMOKE_NAME 与临时目录 $TMP_DIR"
   else
+    # dsh 在容器内以 root 写挂载目录，宿主机用户删不掉；先让容器自己清空
+    "$RUNTIME" exec "$SMOKE_NAME" sh -c \
+      'cd /home/data && rm -rf -- ./* ./.[!.]* ./..?* 2>/dev/null' >/dev/null 2>&1 || true
+    "$RUNTIME" stop -t 2 "$SMOKE_NAME" >/dev/null 2>&1 || true
     "$RUNTIME" rm -f "$SMOKE_NAME" >/dev/null 2>&1 || true
-    rm -rf "$TMP_DIR"
+    if ! rm -rf "$TMP_DIR" 2>/dev/null; then
+      log_warn "临时目录未能完全删除（root 属主文件），请手动清理: $TMP_DIR"
+    fi
   fi
   exit "$rc"
 }
