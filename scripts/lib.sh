@@ -15,7 +15,7 @@ ROOT_DIR="${ROOT_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 # 可由 dev-env.conf 配置、但环境变量优先级更高的配置项
 DEV_ENV_CONFIG_KEYS=(
   REGISTRY IMAGE_NAME IMAGE_TAG CONTAINER_NAME
-  HOST_GIT_DIR SSH_PORT WEB_PORT PUBLIC_HOST DSH_HOME_DIR
+  HOST_GIT_DIR SSH_PORT WEB_PORT PUBLIC_HOST DSH_HOME_SUBDIR
   STATE_DIR DEV_ENV_CONFIG
 )
 
@@ -33,11 +33,11 @@ unset __lc_key
 : "${IMAGE_NAME:=peak2026/lc-dev-env}"
 : "${IMAGE_TAG:=latest}"
 : "${CONTAINER_NAME:=lc-dev-env}"
-: "${HOST_GIT_DIR:=/home/lc/git}"
+: "${HOST_GIT_DIR:=/home/lc/cont_data}"
 : "${SSH_PORT:=2228}"
 : "${WEB_PORT:=3080}"
 : "${PUBLIC_HOST:=}"
-: "${DSH_HOME_DIR:=/home/lc/dsh}"
+: "${DSH_HOME_SUBDIR:=dsh}"
 : "${STATE_DIR:=$ROOT_DIR/.state}"
 : "${DEV_ENV_CONFIG:=$ROOT_DIR/dev-env.conf}"
 
@@ -52,6 +52,9 @@ for __lc_kv in "${__lc_env_overrides[@]}"; do
   export "$__lc_kv"
 done
 unset __lc_kv __lc_env_overrides
+
+# DSH 数据目录：放在数据卷内，容器路径为 /home/data/<DSH_HOME_SUBDIR>
+DSH_HOST_DIR="${HOST_GIT_DIR}/${DSH_HOME_SUBDIR}"
 
 # 状态目录统一转为绝对路径，避免不同工作目录下状态分散
 case "$STATE_DIR" in
@@ -94,7 +97,8 @@ validate_config() {
   [[ "$WEB_PORT" =~ ^[0-9]+$ ]] || die "WEB_PORT 必须是数字: $WEB_PORT"
   (( WEB_PORT >= 1 && WEB_PORT <= 65535 )) || die "WEB_PORT 超出范围: $WEB_PORT"
   [[ "$HOST_GIT_DIR" == /* ]] || die "HOST_GIT_DIR 必须是绝对路径: $HOST_GIT_DIR"
-  [[ "$DSH_HOME_DIR" == /* ]] || die "DSH_HOME_DIR 必须是绝对路径: $DSH_HOME_DIR"
+  [[ -n "$DSH_HOME_SUBDIR" ]] || die "DSH_HOME_SUBDIR 不能为空"
+  [[ "$DSH_HOME_SUBDIR" != */* ]] || die "DSH_HOME_SUBDIR 不能包含 /: $DSH_HOME_SUBDIR"
 }
 
 # ---------- 镜像引用与摘要 ----------

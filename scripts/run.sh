@@ -124,8 +124,8 @@ esac
 
 # 重建同名容器
 mkdir -p "$HOST_GIT_DIR" || die "无法创建宿主机目录: $HOST_GIT_DIR"
-mkdir -p "$DSH_HOME_DIR" || die "无法创建 DSH 数据目录: $DSH_HOME_DIR"
-rm -f "${DSH_HOME_DIR}/web-url.txt"
+mkdir -p "$DSH_HOST_DIR" || die "无法创建 DSH 数据目录: $DSH_HOST_DIR"
+rm -f "${DSH_HOST_DIR}/web-url.txt"
 
 # 浏览器访问地址：优先 PUBLIC_HOST，否则取默认路由的源地址（Windows 客户端用）
 web_host="${PUBLIC_HOST}"
@@ -141,6 +141,7 @@ web_public_url="${DSH_WEB_PUBLIC_URL:-http://${web_host}:${WEB_PORT}}"
 web_trusted_hosts="${DSH_WEB_TRUSTED_HOSTS:-${web_host}:${WEB_PORT}}"
 
 run_env=(
+  -e "DSH_HOME=/home/data/${DSH_HOME_SUBDIR}"
   -e "DSH_WEB_PORT=3080"
   -e "DSH_WEB_PUBLIC_URL=${web_public_url}"
   -e "DSH_WEB_TRUSTED_HOSTS=${web_trusted_hosts}"
@@ -161,8 +162,7 @@ log_info "启动容器: $CONTAINER_NAME（$RUNTIME）"
   --cap-add AUDIT_WRITE \
   -p "${SSH_PORT}:22" \
   -p "${WEB_PORT}:3080" \
-  -v "${HOST_GIT_DIR}:/home/git:Z" \
-  -v "${DSH_HOME_DIR}:/root/.dsh:Z" \
+  -v "${HOST_GIT_DIR}:/home/data:Z" \
   "${run_env[@]}" \
   "$ref" >/dev/null
 
@@ -173,8 +173,8 @@ state_pin "$ref" "$pinned_ref" "$tag_for_state"
 web_url=""
 if [[ "${DSH_ENABLE_WEB:-1}" != "0" ]]; then
   for _ in $(seq 1 30); do
-    if [[ -s "${DSH_HOME_DIR}/web-url.txt" ]]; then
-      web_url="$(cat "${DSH_HOME_DIR}/web-url.txt")"
+    if [[ -s "${DSH_HOST_DIR}/web-url.txt" ]]; then
+      web_url="$(cat "${DSH_HOST_DIR}/web-url.txt")"
       break
     fi
     sleep 1
@@ -187,10 +187,10 @@ cat <<EOF
 运行时:     $RUNTIME
 镜像引用:   $ref（$mode）
 版本钉住:   $pinned_ref
-挂载:       $HOST_GIT_DIR -> /home/git
+挂载:       $HOST_GIT_DIR -> /home/data
 SSH:        ssh -p ${SSH_PORT} root@127.0.0.1  (密码 123456)
 Web GUI:    ${web_url:-（尚未就绪，执行 scripts/web-url.sh 查看）}
-DSH 数据:   ${DSH_HOME_DIR} -> /root/.dsh
+DSH 数据:   ${DSH_HOST_DIR} -> /home/data/${DSH_HOME_SUBDIR}
 进入容器:   scripts/enter.sh
 升级版本:   scripts/run.sh --update
 查看历史:   scripts/rollback.sh --list

@@ -6,17 +6,17 @@ set -euo pipefail
 
 log() { printf '[entrypoint] %s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 
-DSH_HOME_DIR="${DSH_HOME:-/root/.dsh}"
+DSH_HOME_PATH="${DSH_HOME:-/home/data/dsh}"
 WEB_PORT="${DSH_WEB_PORT:-3080}"
 WEB_HOST="${DSH_WEB_HOST:-}"
 PUBLIC_URL="${DSH_WEB_PUBLIC_URL:-}"
 TRUSTED_HOSTS="${DSH_WEB_TRUSTED_HOSTS:-}"
 ENABLE_WEB="${DSH_ENABLE_WEB:-1}"
 LOG_FILE="${DSH_WEB_LOG:-/var/log/dsh-web.log}"
-URL_FILE="${DSH_WEB_URL_FILE:-$DSH_HOME_DIR/web-url.txt}"
+URL_FILE="${DSH_WEB_URL_FILE:-$DSH_HOME_PATH/web-url.txt}"
 
-export DSH_HOME="$DSH_HOME_DIR"
-mkdir -p "$DSH_HOME_DIR" "$(dirname "$LOG_FILE")"
+export DSH_HOME="$DSH_HOME_PATH"
+mkdir -p "$DSH_HOME_PATH" "$(dirname "$LOG_FILE")"
 
 # 收到 docker/podman stop 时把信号转给子进程（dsh、tee、sleep）
 cleanup() {

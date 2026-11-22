@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/lib.sh"
 detect_runtime
 validate_config
 
-url_file="${DSH_HOME_DIR}/web-url.txt"
+url_file="${DSH_HOST_DIR}/web-url.txt"
 if [[ -s "$url_file" ]]; then
   cat "$url_file"
   exit 0

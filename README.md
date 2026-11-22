@@ -62,7 +62,8 @@ digest，不再受 `latest` 指向变化影响，因此本机环境是确定的�
 > export ALIYUN_ACR_USERNAME=xxx ALIYUN_ACR_PASSWORD=xxx
 > ```
 >
-> 挂载说明：宿主机 `/home/lc/git` 挂载到容器 `/home/git`，目录不存在时自动创建。
+> 挂载说明：宿主机 `/home/lc/cont_data` 挂载到容器 `/home/data`，目录不存在时自动创建；
+> DSH 数据保存在其下的 `dsh/` 子目录（容器内 `/home/data/dsh`）。
 > `:Z` 用于 SELinux 环境重打标签，非 SELinux 环境无副作用。
 
 ### 2. 进入容器
@@ -105,7 +106,7 @@ ssh user@server /path/to/lc-dev-env/scripts/web-url.sh    # 从 Windows 远程�
 - Web GUI 默认是明文 HTTP（非 loopback 绑定会在启动时警告）。对外暴露请限制在可信内网，
   或前置 HTTPS 反向代理并用 `DSH_WEB_PUBLIC_URL` / `DSH_WEB_TRUSTED_HOSTS` 覆盖公告与信任地址。
 - 不需要 Web GUI 时可用 `DSH_ENABLE_WEB=0 scripts/run.sh`，容器只保留 SSH。
-- 模型凭据：`DEEPSEEK_API_KEY` 会传入容器；也可在 Web UI 的「设置 → 模型」里填写（保存在 `DSH_HOME_DIR`）。
+- 模型凭据：`DEEPSEEK_API_KEY` 会传入容器；也可在 Web UI 的「设置 → 模型」里填写（保存在 `/home/data/dsh`）。
 
 ### 4. 升级到新版本
 
@@ -142,7 +143,7 @@ scripts/smoke-test.sh --keep             # 保留测试容器，便于排查
 ```
 
 脚本会启动临时容器、通过 SSH 登录并检查：Go/Node/npm/pnpm/Python/g++/make/cmake/git 可用性与版本、
-GOPROXY/时区/locale/git 身份/git 提示符、`dsh` 可用性、`/home/git` 挂载读写、sshd 配置、
+GOPROXY/时区/locale/git 身份/git 提示符、`dsh` 可用性、`/home/data` 挂载读写、sshd 配置、
 `dsh web` 自动启动（URL 已生成）与容器存活状态。
 
 ### 7. 本机构建镜像（本地验证 Dockerfile）
@@ -161,11 +162,11 @@ scripts/build.sh
 | `IMAGE_NAME` | `peak2026/lc-dev-env` | 镜像名 |
 | `IMAGE_TAG` | `latest` | 首次安装/`--update` 使用的 tag |
 | `CONTAINER_NAME` | `lc-dev-env` | 容器名，run/enter/rollback/smoke-test 共用 |
-| `HOST_GIT_DIR` | `/home/lc/git` | 挂载到容器 `/home/git` 的宿主机目录 |
+| `HOST_GIT_DIR` | `/home/lc/cont_data` | 挂载到容器 `/home/data` 的宿主机数据目录 |
 | `SSH_PORT` | `2228` | 宿主机 SSH 端口 -> 容器 22 |
 | `WEB_PORT` | `3080` | 宿主机 Web GUI 端口 -> 容器 3080 |
 | `PUBLIC_HOST` | 空（自动检测） | 浏览器访问用的服务器地址 |
-| `DSH_HOME_DIR` | `/home/lc/dsh` | DSH 数据目录，挂载到容器 `/root/.dsh` |
+| `DSH_HOME_SUBDIR` | `dsh` | DSH 数据子目录：容器内 `/home/data/dsh` |
 | `STATE_DIR` | `$ROOT_DIR/.state` | 版本钉住与回滚记录目录 |
 
 修改容器名只需改一处（`dev-env.conf`），所有脚本自动生效；也可临时覆盖：
@@ -198,9 +199,9 @@ CONTAINER_NAME=my-env scripts/enter.sh
   ```
 
 - 查看当前版本：`scripts/enter.sh dsh --version`（容器启动日志里也会打印）。
-- 会话、设置、凭据都在 `DSH_HOME_DIR`（挂载到 `/root/.dsh`），升级镜像不会丢；跨大版本升级前
+- 会话、设置、凭据都在 `${HOST_GIT_DIR}/dsh`（容器内 `/home/data/dsh`），升级镜像不会丢；跨大版本升级前
   建议先看镜像内的 `/usr/local/lib/node_modules/@deepseek-ai/dsh/docs/upgrade-guide/`。
-- 如果 web profile 因升级出现异常，可停止容器后删除 `DSH_HOME_DIR/profiles/web`，下次启动会按
+- 如果 web profile 因升级出现异常，可停止容器后删除 `${HOST_GIT_DIR}/dsh/profiles/web`，下次启动会按
   模板重新初始化（自定义配置会丢失）。
 
 ## CI/CD
@@ -254,7 +255,7 @@ Dockerfile 的构建源已参数化，默认使用公共源（供 GitHub Actions
 - 安全提示：`root` 密码固定为 `123456` 且端口映射默认监听所有网卡；请只在可信网络使用，
   或自行改为 SSH key 登录（`-p 127.0.0.1:${SSH_PORT}:22` 可限制仅本机访问）。
 - 目前只构建 `linux/amd64` 单架构镜像。
-- 容器内 `dsh` 以 root 身份运行，agent 的 shell 工作目录是 `/home/git`；Web GUI 打印的带 token
+- 容器内 `dsh` 以 root 身份运行，agent 的 shell 工作目录是 `/home/data`；Web GUI 打印的带 token
   URL 等同于完整访问权限，只应发给预期用户。
 - Web GUI 默认明文 HTTP 且监听容器网卡地址；请用防火墙限制 `WEB_PORT`，或只通过 SSH 隧道访问。
 - ACR 个人版不支持版本保留策略，因此仓库里始终只有 `latest` / `previous` 两个版本；

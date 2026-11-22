@@ -140,7 +140,7 @@ log_info "启动测试容器: $SMOKE_NAME"
 if ! "$RUNTIME" run -d --name "$SMOKE_NAME" \
       --cap-add AUDIT_WRITE \
       "${port_args[@]}" \
-      -v "$TMP_DIR/mnt:/home/git:Z" \
+      -v "$TMP_DIR/mnt:/home/data:Z" \
       "$REF" >/dev/null; then
   die "容器启动失败: $REF"
 fi
@@ -307,14 +307,14 @@ check "PATH 包含 Go/Node"     'printf "%s" "$PATH" | grep -q /usr/local/go/bin
 
 log_info ""
 log_info "运行状态:"
-check "工作目录 /home/git 可写"        'touch /home/git/.smoke-write && rm -f /home/git/.smoke-write'
-check "宿主机挂载内容可见"             'grep -q smoke-host-ok /home/git/host-check.txt'
+check "工作目录 /home/data 可写"       'touch /home/data/.smoke-write && rm -f /home/data/.smoke-write'
+check "宿主机挂载内容可见"             'grep -q smoke-host-ok /home/data/host-check.txt'
 check "sshd 允许 root 登录（配置）"    'sshd -T 2>/dev/null | grep -qi "^permitrootlogin yes"'
 
 # dsh web 由容器入口自动启动；URL 文件出现即说明 web 已就绪
 dsh_ready=0
 for _ in $(seq 1 60); do
-  if "$RUNTIME" exec "$SMOKE_NAME" sh -c 'grep -q "token=" /root/.dsh/web-url.txt' >/dev/null 2>&1; then
+  if "$RUNTIME" exec "$SMOKE_NAME" sh -c 'grep -q "token=" /home/data/dsh/web-url.txt' >/dev/null 2>&1; then
     dsh_ready=1
     break
   fi

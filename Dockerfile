@@ -100,5 +100,5 @@ COPY files/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod 755 /usr/local/bin/entrypoint.sh
 
 # 8) root 运行，工作目录为挂载点
-WORKDIR /home/git
+WORKDIR /home/data
 CMD ["/usr/local/bin/entrypoint.sh"]
