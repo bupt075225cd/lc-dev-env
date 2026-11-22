@@ -124,6 +124,31 @@ esac
 
 # 重建同名容器
 mkdir -p "$HOST_GIT_DIR" || die "无法创建宿主机目录: $HOST_GIT_DIR"
+mkdir -p "$DSH_HOME_DIR" || die "无法创建 DSH 数据目录: $DSH_HOME_DIR"
+rm -f "${DSH_HOME_DIR}/web-url.txt"
+
+# 浏览器访问地址：优先 PUBLIC_HOST，否则取默认路由的源地址（Windows 客户端用）
+web_host="${PUBLIC_HOST}"
+if [[ -z "$web_host" ]]; then
+  web_host="$(ip route get 1.1.1.1 2>/dev/null \
+    | awk '{ for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit } }' || true)"
+fi
+if [[ -z "$web_host" ]]; then
+  web_host="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+fi
+[[ -n "$web_host" ]] || die "无法自动检测服务器 IP，请在 dev-env.conf 设置 PUBLIC_HOST"
+web_public_url="${DSH_WEB_PUBLIC_URL:-http://${web_host}:${WEB_PORT}}"
+web_trusted_hosts="${DSH_WEB_TRUSTED_HOSTS:-${web_host}:${WEB_PORT}}"
+
+run_env=(
+  -e "DSH_WEB_PORT=3080"
+  -e "DSH_WEB_PUBLIC_URL=${web_public_url}"
+  -e "DSH_WEB_TRUSTED_HOSTS=${web_trusted_hosts}"
+)
+[[ -n "${DEEPSEEK_API_KEY:-}" ]] && run_env+=(-e "DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}")
+[[ -n "${DSH_WEB_HOST:-}" ]] && run_env+=(-e "DSH_WEB_HOST=${DSH_WEB_HOST}")
+[[ -n "${DSH_ENABLE_WEB:-}" ]] && run_env+=(-e "DSH_ENABLE_WEB=${DSH_ENABLE_WEB}")
+
 if "$RUNTIME" container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
   log_info "清理同名旧容器: $CONTAINER_NAME"
   "$RUNTIME" stop -t 2 "$CONTAINER_NAME" >/dev/null 2>&1 || true
@@ -135,11 +160,26 @@ log_info "启动容器: $CONTAINER_NAME（$RUNTIME）"
   --restart=unless-stopped \
   --cap-add AUDIT_WRITE \
   -p "${SSH_PORT}:22" \
+  -p "${WEB_PORT}:3080" \
   -v "${HOST_GIT_DIR}:/home/git:Z" \
+  -v "${DSH_HOME_DIR}:/root/.dsh:Z" \
+  "${run_env[@]}" \
   "$ref" >/dev/null
 
 # 容器启动成功后才钉住版本，启动失败时保持上一次的钉住记录
 state_pin "$ref" "$pinned_ref" "$tag_for_state"
+
+# 等 dsh web 打印带 token 的 URL（超时不算失败，后续可用 scripts/web-url.sh 查看）
+web_url=""
+if [[ "${DSH_ENABLE_WEB:-1}" != "0" ]]; then
+  for _ in $(seq 1 30); do
+    if [[ -s "${DSH_HOME_DIR}/web-url.txt" ]]; then
+      web_url="$(cat "${DSH_HOME_DIR}/web-url.txt")"
+      break
+    fi
+    sleep 1
+  done
+fi
 
 cat <<EOF
 
@@ -149,6 +189,8 @@ cat <<EOF
 版本钉住:   $pinned_ref
 挂载:       $HOST_GIT_DIR -> /home/git
 SSH:        ssh -p ${SSH_PORT} root@127.0.0.1  (密码 123456)
+Web GUI:    ${web_url:-（尚未就绪，执行 scripts/web-url.sh 查看）}
+DSH 数据:   ${DSH_HOME_DIR} -> /root/.dsh
 进入容器:   scripts/enter.sh
 升级版本:   scripts/run.sh --update
 查看历史:   scripts/rollback.sh --list

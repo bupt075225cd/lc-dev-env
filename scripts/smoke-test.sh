@@ -294,6 +294,7 @@ check "g++ 可用"            'g++ --version'
 check "make 可用"           'make --version'
 check "cmake 可用"          'cmake --version'
 check "git 可用"            'git --version'
+check "dsh 可用"            'dsh --version'
 
 log_info ""
 log_info "开发配置:"
@@ -309,6 +310,23 @@ log_info "运行状态:"
 check "工作目录 /home/git 可写"        'touch /home/git/.smoke-write && rm -f /home/git/.smoke-write'
 check "宿主机挂载内容可见"             'grep -q smoke-host-ok /home/git/host-check.txt'
 check "sshd 允许 root 登录（配置）"    'sshd -T 2>/dev/null | grep -qi "^permitrootlogin yes"'
+
+# dsh web 由容器入口自动启动；URL 文件出现即说明 web 已就绪
+dsh_ready=0
+for _ in $(seq 1 60); do
+  if "$RUNTIME" exec "$SMOKE_NAME" sh -c 'grep -q "token=" /root/.dsh/web-url.txt' >/dev/null 2>&1; then
+    dsh_ready=1
+    break
+  fi
+  sleep 1
+done
+if [[ $dsh_ready -eq 1 ]]; then
+  PASS=$((PASS + 1))
+  printf '  [ok]   dsh web 已自动启动\n'
+else
+  FAIL=$((FAIL + 1))
+  printf '  [FAIL] dsh web 未在 60 秒内就绪\n'
+fi
 
 if ! container_running; then
   dump_logs

@@ -21,6 +21,8 @@ cd "$ROOT_DIR"
   --build-arg BASE_IMAGE=swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/ubuntu:latest \
   --build-arg GO_DL_BASE=https://mirrors.aliyun.com/golang \
   --build-arg NODE_DL_BASE=https://mirrors.aliyun.com/nodejs-release \
+  --build-arg DSH_VERSION="${DSH_VERSION:-latest}" \
+  --build-arg NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com}" \
   .
 
 echo "镜像构建完成: $IMAGE_NAME"

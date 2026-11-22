@@ -15,7 +15,8 @@ ROOT_DIR="${ROOT_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 # 可由 dev-env.conf 配置、但环境变量优先级更高的配置项
 DEV_ENV_CONFIG_KEYS=(
   REGISTRY IMAGE_NAME IMAGE_TAG CONTAINER_NAME
-  HOST_GIT_DIR SSH_PORT STATE_DIR DEV_ENV_CONFIG
+  HOST_GIT_DIR SSH_PORT WEB_PORT PUBLIC_HOST DSH_HOME_DIR
+  STATE_DIR DEV_ENV_CONFIG
 )
 
 # 1) 记录调用方通过环境变量传入的值（最高优先级）
@@ -34,6 +35,9 @@ unset __lc_key
 : "${CONTAINER_NAME:=lc-dev-env}"
 : "${HOST_GIT_DIR:=/home/lc/git}"
 : "${SSH_PORT:=2228}"
+: "${WEB_PORT:=3080}"
+: "${PUBLIC_HOST:=}"
+: "${DSH_HOME_DIR:=/home/lc/dsh}"
 : "${STATE_DIR:=$ROOT_DIR/.state}"
 : "${DEV_ENV_CONFIG:=$ROOT_DIR/dev-env.conf}"
 
@@ -87,7 +91,10 @@ validate_config() {
   [[ -n "$CONTAINER_NAME" ]] || die "CONTAINER_NAME 不能为空"
   [[ "$SSH_PORT" =~ ^[0-9]+$ ]] || die "SSH_PORT 必须是数字: $SSH_PORT"
   (( SSH_PORT >= 1 && SSH_PORT <= 65535 )) || die "SSH_PORT 超出范围: $SSH_PORT"
+  [[ "$WEB_PORT" =~ ^[0-9]+$ ]] || die "WEB_PORT 必须是数字: $WEB_PORT"
+  (( WEB_PORT >= 1 && WEB_PORT <= 65535 )) || die "WEB_PORT 超出范围: $WEB_PORT"
   [[ "$HOST_GIT_DIR" == /* ]] || die "HOST_GIT_DIR 必须是绝对路径: $HOST_GIT_DIR"
+  [[ "$DSH_HOME_DIR" == /* ]] || die "DSH_HOME_DIR 必须是绝对路径: $DSH_HOME_DIR"
 }
 
 # ---------- 镜像引用与摘要 ----------

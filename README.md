@@ -4,6 +4,7 @@
 
 > 镜像由 GitHub Actions CI 构建、冒烟测试后发布到阿里云 ACR；本机脚本统一从 ACR 拉取启动，并按
 > 镜像摘要（digest）钉住版本，保证本地环境可复现、可升级、可回滚。
+> 镜像内置 DeepSeek Harness（`dsh`），容器启动后自动运行 `dsh web`，Windows 客户端用浏览器访问。
 
 ## 镜像包含的工具链
 
@@ -14,6 +15,7 @@
 | Node.js | 26.13.1（npm 11.20.0） | 官方二进制 |
 | g++ / GCC | 15.2.0 | apt（系统默认） |
 | git | 2.53.0 | apt（系统默认） |
+| DeepSeek Harness（`dsh`） | npm `latest`（当前 0.2.2-rc.5） | npm 全局安装 |
 
 - Go 模块代理：`https://goproxy.cn,direct`
 - Git 身份：`Liu Cong <nonpvirvatemail@163.com>`
@@ -28,12 +30,15 @@ lc-dev-env/
 │       └── ci.yml          # 构建 -> 冒烟测试 -> 轮转 latest/previous -> 发布 -> 复验
 ├── Dockerfile              # 开发环境镜像（构建源参数化）
 ├── dev-env.conf            # 默认配置（镜像仓库/容器名/端口/挂载）
+├── files/
+│   └── entrypoint.sh       # 容器入口：启动 sshd + 守护 dsh web
 ├── scripts/
 │   ├── lib.sh              # 公共库：配置加载、运行时探测、版本钉住
 │   ├── build.sh            # 本机构建镜像（内网/阿里云源，本地测试用）
 │   ├── run.sh              # 拉取并钉住镜像，后台运行容器
 │   ├── rollback.sh         # 查看历史版本并回滚
 │   ├── smoke-test.sh       # 冒烟测试：SSH 登录校验工具链/挂载/sshd
+│   ├── web-url.sh          # 输出当前 DSH Web GUI 的带 token URL
 │   └── enter.sh            # 进入容器
 ├── .dockerignore
 └── README.md
@@ -70,14 +75,46 @@ scripts/enter.sh -n other-env         # 指定容器名
 podman exec -it lc-dev-env bash       # 容器名见 dev-env.conf 的 CONTAINER_NAME
 ```
 
-### 3. 升级到新版本
+### 3. 从 Windows 访问 Web GUI
+
+容器启动时会自动运行 `dsh web`（[files/entrypoint.sh](files/entrypoint.sh)），监听容器 IP 的 3080，
+宿主机按 `WEB_PORT`（默认 3080）发布。`scripts/run.sh` 会打印带一次性 token 的地址：
+
+```
+Web GUI:    http://<服务器IP>:3080/?token=...
+```
+
+在 Windows 浏览器打开该 URL 即可（token 换 30 天会话 cookie）。容器重启后 token 会变，重新获取：
+
+```bash
+scripts/web-url.sh                                        # 在服务器上
+ssh user@server /path/to/lc-dev-env/scripts/web-url.sh    # 从 Windows 远程取
+```
+
+- `PUBLIC_HOST` 决定 URL 里使用的地址，默认取服务器默认路由的源 IP；多网卡/VPN 环境请显式设置。
+- 需要在服务器防火墙/安全组放行 `WEB_PORT`，并保证 Windows 与服务器网络互通。
+- 更安全的做法是不对外放行端口，改用 SSH 隧道：
+
+  ```powershell
+  # Windows PowerShell
+  ssh -L 3080:127.0.0.1:3080 user@server
+  ```
+
+  并以 `PUBLIC_HOST=127.0.0.1 scripts/run.sh` 启动，然后打开 `http://127.0.0.1:3080/?token=...`。
+
+- Web GUI 默认是明文 HTTP（非 loopback 绑定会在启动时警告）。对外暴露请限制在可信内网，
+  或前置 HTTPS 反向代理并用 `DSH_WEB_PUBLIC_URL` / `DSH_WEB_TRUSTED_HOSTS` 覆盖公告与信任地址。
+- 不需要 Web GUI 时可用 `DSH_ENABLE_WEB=0 scripts/run.sh`，容器只保留 SSH。
+- 模型凭据：`DEEPSEEK_API_KEY` 会传入容器；也可在 Web UI 的「设置 → 模型」里填写（保存在 `DSH_HOME_DIR`）。
+
+### 4. 升级到新版本
 
 ```bash
 scripts/run.sh --update        # 重新拉取 IMAGE_TAG（默认 latest）并钉住新 digest
 scripts/run.sh --tag <tag>     # 钉住任意已存在的 tag（如 previous）
 ```
 
-### 4. 回滚
+### 5. 回滚
 
 ```bash
 scripts/rollback.sh --list     # 列出本地记录的可回滚版本（1 = 最新）
@@ -96,7 +133,7 @@ ACR 中只保留 `latest` 与 `previous` 两个版本，所以跨机器回滚只
 IMAGE_DIGEST=sha256:1f2e3d... scripts/run.sh
 ```
 
-### 5. 冒烟测试
+### 6. 冒烟测试
 
 ```bash
 scripts/smoke-test.sh                    # 测试当前钉住的版本
@@ -105,9 +142,10 @@ scripts/smoke-test.sh --keep             # 保留测试容器，便于排查
 ```
 
 脚本会启动临时容器、通过 SSH 登录并检查：Go/Node/npm/pnpm/Python/g++/make/cmake/git 可用性与版本、
-GOPROXY/时区/locale/git 身份/git 提示符、`/home/git` 挂载读写、sshd 配置与容器存活状态。
+GOPROXY/时区/locale/git 身份/git 提示符、`dsh` 可用性、`/home/git` 挂载读写、sshd 配置、
+`dsh web` 自动启动（URL 已生成）与容器存活状态。
 
-### 6. 本机构建镜像（本地验证 Dockerfile）
+### 7. 本机构建镜像（本地验证 Dockerfile）
 
 ```bash
 scripts/build.sh
@@ -125,6 +163,9 @@ scripts/build.sh
 | `CONTAINER_NAME` | `lc-dev-env` | 容器名，run/enter/rollback/smoke-test 共用 |
 | `HOST_GIT_DIR` | `/home/lc/git` | 挂载到容器 `/home/git` 的宿主机目录 |
 | `SSH_PORT` | `2228` | 宿主机 SSH 端口 -> 容器 22 |
+| `WEB_PORT` | `3080` | 宿主机 Web GUI 端口 -> 容器 3080 |
+| `PUBLIC_HOST` | 空（自动检测） | 浏览器访问用的服务器地址 |
+| `DSH_HOME_DIR` | `/home/lc/dsh` | DSH 数据目录，挂载到容器 `/root/.dsh` |
 | `STATE_DIR` | `$ROOT_DIR/.state` | 版本钉住与回滚记录目录 |
 
 修改容器名只需改一处（`dev-env.conf`），所有脚本自动生效；也可临时覆盖：
@@ -144,6 +185,23 @@ CONTAINER_NAME=my-env scripts/enter.sh
 - 每次运行 `run.sh` 时若 digest 与上一条不同才追加历史，避免重复记录。
 - ACR 侧只有 `latest` / `previous` 两个版本：个人版不支持版本保留策略，由 CI 在每次发布时
   把旧 `latest` 轮转为 `previous`，从而把可见版本固定为 2 个。
+
+## DSH 版本与升级
+
+- 镜像构建时按 `Dockerfile` 的 `ARG DSH_VERSION` 安装（默认 `latest`，即 npm 上最新版本）。
+- 升级：重新构建镜像后 `scripts/run.sh --update` 拉取新镜像并重建容器。
+
+  ```bash
+  scripts/build.sh                     # 本机构建，装 npm 上最新的 dsh
+  DSH_VERSION=0.2.3 scripts/build.sh   # 固定版本构建
+  scripts/run.sh --update              # 使用 CI 构建的新镜像升级
+  ```
+
+- 查看当前版本：`scripts/enter.sh dsh --version`（容器启动日志里也会打印）。
+- 会话、设置、凭据都在 `DSH_HOME_DIR`（挂载到 `/root/.dsh`），升级镜像不会丢；跨大版本升级前
+  建议先看镜像内的 `/usr/local/lib/node_modules/@deepseek-ai/dsh/docs/upgrade-guide/`。
+- 如果 web profile 因升级出现异常，可停止容器后删除 `DSH_HOME_DIR/profiles/web`，下次启动会按
+  模板重新初始化（自定义配置会丢失）。
 
 ## CI/CD
 
@@ -183,6 +241,8 @@ Dockerfile 的构建源已参数化，默认使用公共源（供 GitHub Actions
 | BASE_IMAGE | `docker.io/library/ubuntu:latest` | `swr.cn-north-4...` |
 | GO_DL_BASE | `https://go.dev/dl` | `https://mirrors.aliyun.com/golang` |
 | NODE_DL_BASE | `https://nodejs.org/dist` | `https://mirrors.aliyun.com/nodejs-release` |
+| NPM_REGISTRY | `https://registry.npmjs.org` | `https://registry.npmmirror.com` |
+| DSH_VERSION | `latest` | `latest`（可用 `DSH_VERSION=x.y.z` 固定） |
 
 ## 说明与已知限制
 
@@ -194,5 +254,8 @@ Dockerfile 的构建源已参数化，默认使用公共源（供 GitHub Actions
 - 安全提示：`root` 密码固定为 `123456` 且端口映射默认监听所有网卡；请只在可信网络使用，
   或自行改为 SSH key 登录（`-p 127.0.0.1:${SSH_PORT}:22` 可限制仅本机访问）。
 - 目前只构建 `linux/amd64` 单架构镜像。
+- 容器内 `dsh` 以 root 身份运行，agent 的 shell 工作目录是 `/home/git`；Web GUI 打印的带 token
+  URL 等同于完整访问权限，只应发给预期用户。
+- Web GUI 默认明文 HTTP 且监听容器网卡地址；请用防火墙限制 `WEB_PORT`，或只通过 SSH 隧道访问。
 - ACR 个人版不支持版本保留策略，因此仓库里始终只有 `latest` / `previous` 两个版本；
   需要更长的版本历史时请改用企业版保留策略或手动维护。

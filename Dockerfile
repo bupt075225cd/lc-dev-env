@@ -7,6 +7,10 @@ ARG GO_VERSION=1.27.4
 ARG NODE_VERSION=26.13.1
 ARG GO_DL_BASE=https://go.dev/dl
 ARG NODE_DL_BASE=https://nodejs.org/dist
+# DeepSeek Harness 版本：默认 npm latest；可传 --build-arg DSH_VERSION=0.2.2-rc.5 固定
+ARG DSH_VERSION=latest
+# npm 源：默认官方源（CI）；本机可用 --build-arg NPM_REGISTRY=https://registry.npmmirror.com
+ARG NPM_REGISTRY=https://registry.npmjs.org
 
 FROM ${BASE_IMAGE}
 
@@ -15,6 +19,8 @@ ARG GO_VERSION
 ARG NODE_VERSION
 ARG GO_DL_BASE
 ARG NODE_DL_BASE
+ARG DSH_VERSION
+ARG NPM_REGISTRY
 
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Asia/Shanghai \
@@ -49,7 +55,11 @@ RUN set -eux; \
     rm -f /tmp/node.tar.xz
 
 # 3.5) pnpm 包管理器（通过 npm 全局安装）
-RUN npm install -g pnpm
+RUN npm install -g --registry="${NPM_REGISTRY}" pnpm
+
+# 3.6) DeepSeek Harness CLI（npm 全局安装，dsh 位于 /usr/local/bin）
+RUN npm install -g --registry="${NPM_REGISTRY}" "@deepseek-ai/dsh@${DSH_VERSION}" \
+    && dsh --version
 
 # 4) Git 用户身份配置（固化进镜像）
 RUN git config --global user.email "nonpvirvatemail@163.com" \
@@ -76,7 +86,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssh-server 
     && chmod 644 /etc/profile.d/dev-env.sh \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-EXPOSE 22
+EXPOSE 22 3080
 
 # 6) bash 提示符：启用 git 分支显示
 #    构建时将 files/ 下的官方 git-prompt.sh 复制到 /root，source 它提供 __git_ps1
@@ -85,6 +95,10 @@ RUN printf '%s\n' 'source ~/git-prompt.sh' \
                   'export PS1='"'"'[\u@\h \W\[\033[32m\]$(__git_ps1 " (%s)")\[\033[0m\]]\$ '"'"'' \
         >> /root/.bashrc
 
-# 7) root 运行，工作目录为挂载点，启动 SSH 并后台常驻
+# 7) 入口脚本：启动 sshd，并在前台守护 dsh web（自动重启）
+COPY files/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod 755 /usr/local/bin/entrypoint.sh
+
+# 8) root 运行，工作目录为挂载点
 WORKDIR /home/git
-CMD ["sh", "-c", "ssh-keygen -A && service ssh start && sleep infinity"]
+CMD ["/usr/local/bin/entrypoint.sh"]
