@@ -163,7 +163,7 @@ scripts/build.sh
 | `IMAGE_TAG` | `latest` | 首次安装/`--update` 使用的 tag |
 | `CONTAINER_NAME` | `lc-dev-env` | 容器名，run/enter/rollback/smoke-test 共用 |
 | `HOST_GIT_DIR` | `/home/lc/cont_data` | 挂载到容器 `/home/data` 的宿主机数据目录 |
-| `SSH_PORT` | `2228` | 宿主机 SSH 端口 -> 容器 22 |
+| `SSH_PORT` | `2227` | 宿主机 SSH 端口 -> 容器 22 |
 | `WEB_PORT` | `3080` | 宿主机 Web GUI 端口 -> 容器 3080 |
 | `PUBLIC_HOST` | 空（自动检测） | 浏览器访问用的服务器地址 |
 | `DSH_HOME_SUBDIR` | `dsh` | DSH 数据子目录：容器内 `/home/data/dsh` |

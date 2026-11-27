@@ -34,7 +34,7 @@ unset __lc_key
 : "${IMAGE_TAG:=latest}"
 : "${CONTAINER_NAME:=lc-dev-env}"
 : "${HOST_GIT_DIR:=/home/lc/cont_data}"
-: "${SSH_PORT:=2228}"
+: "${SSH_PORT:=2227}"
 : "${WEB_PORT:=3080}"
 : "${PUBLIC_HOST:=}"
 : "${DSH_HOME_SUBDIR:=dsh}"
