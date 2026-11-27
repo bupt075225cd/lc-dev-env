@@ -55,12 +55,15 @@ scripts/run.sh
 首次运行会从 ACR 拉取 `IMAGE_TAG`（默认 `latest`），**记录并钉住其 digest**；之后每次运行都复用该
 digest，不再受 `latest` 指向变化影响，因此本机环境是确定的。
 
-> ACR 登录：首次运行前需登录一次，或用环境变量提供凭据（脚本会自动登录并在拉取后登出）：
+> ACR 登录：二选一——首次运行前手动登录一次，或用环境变量提供凭据：
 > ```bash
 > podman login crpi-vb458bo8ja2welze.cn-chengdu.personal.cr.aliyuncs.com
 > # 或
 > export ALIYUN_ACR_USERNAME=xxx ALIYUN_ACR_PASSWORD=xxx
 > ```
+> 用环境变量时，脚本仅在拉取阶段临时登录，拉取结束（无论成败）后立即登出，凭据不落盘；
+> 手动登录的凭据属于你自己的登录状态，脚本**不会**登出它（否则后续 `run.sh --update` 会因缺凭据而失败）。
+> 登出失败会打印警告，此时请手动执行 `podman logout <REGISTRY>`。
 >
 > 挂载说明：宿主机 `/home/lc/cont_data` 挂载到容器 `/home/data`，目录不存在时自动创建；
 > DSH 数据保存在其下的 `dsh/` 子目录（容器内 `/home/data/dsh`）。
@@ -73,7 +76,7 @@ scripts/enter.sh                      # 交互式 bash
 scripts/enter.sh go version           # 在容器内执行命令
 scripts/enter.sh -n other-env         # 指定容器名
 # 或
-podman exec -it lc-dev-env bash       # 容器名见 dev-env.conf 的 CONTAINER_NAME
+podman exec -it lc-devel-env bash     # 容器名见 dev-env.conf 的 CONTAINER_NAME
 ```
 
 ### 3. 从 Windows 访问 Web GUI
@@ -161,7 +164,7 @@ scripts/build.sh
 | `REGISTRY` | `crpi-vb458bo8ja2welze.cn-chengdu.personal.cr.aliyuncs.com` | 镜像仓库 |
 | `IMAGE_NAME` | `peak2026/lc-dev-env` | 镜像名 |
 | `IMAGE_TAG` | `latest` | 首次安装/`--update` 使用的 tag |
-| `CONTAINER_NAME` | `lc-dev-env` | 容器名，run/enter/rollback/smoke-test 共用 |
+| `CONTAINER_NAME` | `lc-devel-env` | 容器名，run/enter/rollback/smoke-test 共用 |
 | `HOST_GIT_DIR` | `/home/lc/cont_data` | 挂载到容器 `/home/data` 的宿主机数据目录 |
 | `SSH_PORT` | `2227` | 宿主机 SSH 端口 -> 容器 22 |
 | `WEB_PORT` | `3080` | 宿主机 Web GUI 端口 -> 容器 3080 |

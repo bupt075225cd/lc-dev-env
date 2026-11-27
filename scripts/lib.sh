@@ -32,7 +32,7 @@ unset __lc_key
 : "${REGISTRY:=crpi-vb458bo8ja2welze.cn-chengdu.personal.cr.aliyuncs.com}"
 : "${IMAGE_NAME:=peak2026/lc-dev-env}"
 : "${IMAGE_TAG:=latest}"
-: "${CONTAINER_NAME:=lc-dev-env}"
+: "${CONTAINER_NAME:=lc-devel-env}"
 : "${HOST_GIT_DIR:=/home/lc/cont_data}"
 : "${SSH_PORT:=2227}"
 : "${WEB_PORT:=3080}"
@@ -158,6 +158,10 @@ immutable_ref_for() {
 }
 
 # ---------- 仓库登录（凭据仅从环境变量读取，不落盘） ----------
+#
+# 只有脚本自己用环境变量建立的登录才会在拉取后登出（见 registry_logout）。
+# 用户手动 `podman/docker login` 得到的凭据不会被登出——那是用户自己的登录状态，
+# 登出会导致后续 `run.sh --update` 因缺凭据而拉取失败。
 
 registry_login() {
   if [[ -n "${ALIYUN_ACR_USERNAME:-}" && -n "${ALIYUN_ACR_PASSWORD:-}" ]]; then
@@ -167,13 +171,18 @@ registry_login() {
     else
       log_warn "ACR 登录失败，继续尝试拉取（可能已有本地凭据）"
     fi
+  elif [[ -n "${ALIYUN_ACR_USERNAME:-}" || -n "${ALIYUN_ACR_PASSWORD:-}" ]]; then
+    log_warn "ALIYUN_ACR_USERNAME 与 ALIYUN_ACR_PASSWORD 需同时设置，已跳过登录（改用本地已保存的凭据）"
   fi
   return 0
 }
 
+# 仅登出脚本自己建立的登录；登出失败时明确告警，避免凭据被静默留在本地
 registry_logout() {
   if [[ "${__lc_logged_in:-0}" -eq 1 ]]; then
-    "$RUNTIME" logout "$REGISTRY" >/dev/null 2>&1 || true
+    if ! "$RUNTIME" logout "$REGISTRY" >/dev/null 2>&1; then
+      log_warn "ACR 登出失败，凭据可能仍保存在本地凭据库（可手动执行 $RUNTIME logout $REGISTRY）"
+    fi
     __lc_logged_in=0
   fi
   return 0
